@@ -1,5 +1,4 @@
 # PROJETO DE DESENVOLVIMENTO DE PROTÓTIPO IOT PARA MONITORAMENTO DE CONSUMO ENERGÉTICO EM SECADORES DE ANIMAIS EM AMBIENTES COMERCIAIS
-Project for educational purposes, created and developed during applied robotics classes.
 
 Projeto criado como Trabalho de Conclusão de Curso (TCC), proposto na disciplina de Projeto em engenharia, do curso de Engenharia de Controle e Automação, do Centro de Ciências Exatas, Ambientais e de Tecnologias da Pontifícia Universidade Católica de Campinas,
 
