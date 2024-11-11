@@ -9,10 +9,10 @@
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 // Constants for calibration
-const float vCalibration = 203.0;
-const float currCalibration = 2.3;
+const float vCalibration = 192.0;
+const float currCalibration = 2.14;
 
-const int numReadings = 5;  // Número de leituras para a média
+const int numReadings = 2;  // Número de leituras para a média
 float readings[numReadings]; // Array para armazenar as leituras
 int readIndex = 0;           // Índice atual para o array de leituras
 float total = 0.0;           // Soma de todas as leituras
@@ -47,18 +47,31 @@ double menor_valor = 0;
 
 // Variables for energy calculation
 float kWh = 0.0;
-float persistentVariable = 1.0; // Default value for division
-float kWhDiv = 0.0; // New variable to hold the result of kWh / persistentVariable
+float SALVAR = 1.0; // Default value for division
+float kWhDiv = 0.0; // New variable to hold the result of kWh / SALVAR
 unsigned long lastMillis = millis();
 
-
-
+// Variaveis para calculo de conta de luz
+float TUSD = 0.5;           // Tarifa de Uso do Sistema de Distribuição (valor aproximado, ajustar conforme sua distribuidora)
+float TE = 0.4;             // Tarifa de Energia (valor aproximado, ajustar conforme sua distribuidora)
+float Custo_Bandeira = 0.03; // Custo da bandeira tarifária (valor aproximado, ajustar conforme bandeira atual)
+float ICMS = 0.18;          // Percentual de ICMS (valor aproximado)
+float PIS = 0.0165;         // Percentual de PIS (valor aproximado)
+float COFINS = 0.076;       // Percentual de COFINS (valor aproximado)
+float Contribuicao = 5.0;   // Contribuição para iluminação pública ou outro custo fixo em R$
 
 
 
 // EEPROM addresses for each variable
 const int addrKWh = 12;
-const int addrPersistentVar = 20; // Address for persistentVariable
+const int addrSALVAR = 20; // Address for SALVAR
+const int addrTUSD = 20; // Address for TUSD
+const int addrTE = 20; // Address for TE
+const int addrCusto_Bandeira = 20; // Address for Custo_Bandeira
+const int addrICMS = 20; // Address for ICMS
+const int addrPIS = 20; // Address for PIS
+const int addrCOFINS = 20; // Address for COFINS
+const int addrContribuicao = 20; // Address for Contribuicao
 const int addrkWhDiv = sizeof(float); // Endereço inicial para kWhDiv, após o espaço de kWh
 
 // WiFi and MQTT setup
@@ -74,10 +87,17 @@ const int buttonPin = 12;
 int lastButtonState = HIGH;
 
 // Function prototypes
-void readEnergyDataFromEEPROM();
-void readPersistentVariableFromEEPROM();
 void saveEnergyDataToEEPROM();
-void savePersistentVariableToEEPROM();
+void readEnergyDataFromEEPROM();
+void readSALVARFromEEPROM();
+void readEnergyDataFromEEPROM();
+void readTUSDFromEEPROM();
+void readTEFromEEPROM();
+void readCusto_BandeiraFromEEPROM();
+void readPISFromEEPROM();
+void readICMSFromEEPROM();
+void readCOFINSFromEEPROM();
+void readContribuicaoFromEEPROM();
 void updateLCD();
 void setup_wifi();
 void reconnect();
@@ -94,11 +114,18 @@ void setup() {
     lcd.backlight();
 
     // Initialize EEPROM
-    EEPROM.begin(32);
+    EEPROM.begin(64);
 
     // Read the stored data from EEPROM
     readEnergyDataFromEEPROM();
-    readPersistentVariableFromEEPROM();
+    readSALVARFromEEPROM();
+    readTUSDFromEEPROM();
+    readTEFromEEPROM();
+    readCusto_BandeiraFromEEPROM();
+    readICMSFromEEPROM();
+    readPISFromEEPROM();
+    readCOFINSFromEEPROM();
+    readContribuicaoFromEEPROM();
 
     // Setup voltage and current inputs
     emon.voltage(35, vCalibration, 1.7); // Calibração da tensão
@@ -144,8 +171,8 @@ void loop() {
 // Calcula a tensão, corrente e potência usando EmonLib
 emon.calcVI(20, 2000); // Calcula todos os valores (Vrms, Irms, Power)
 
-// Ignora as leituras nos primeiros 10 segundos
-if (millis() - startMillis < 10000) {
+// Ignora as leituras nos primeiros 100 segundos
+if (millis() - startMillis < 100000) {
     return; // Retorna sem calcular para ignorar as leituras
 }
 
@@ -220,17 +247,16 @@ average = total / numReadings;  // Calcula a média das leituras
         dtostrf(kWh, 6, 3, kWhStr); // Converte o float para string
         client.publish("outTopic/kWh", kWhStr);
 
-        // Envia o valor da variável persistente via MQTT
-        char persistentVarStr[10];
-        dtostrf(persistentVariable, 6, 3, persistentVarStr);
-        client.publish("outTopic/persistentVar", persistentVarStr);
-
-        // Calcula kWh dividido por persistentVariable e publica
-        if (persistentVariable != 0) {
-            kWhDiv = kWh / persistentVariable;
-            char kWhDivStr[10];
-            dtostrf(kWhDiv, 6, 3, kWhDivStr); // Converte o resultado para string
-            client.publish("outTopic/kWhDiv", kWhDivStr);
+        // Calcula kWh dividido por SALVAR e publica
+        if (SALVAR != 0) {
+        float custoEnergia = kWh * (TUSD + TE);
+        float custoBandeira = (kWh / 100.0) * Custo_Bandeira;
+        float custoComImpostos = custoEnergia * (1 + ICMS + PIS + COFINS);
+        float contaDeLuz = (custoComImpostos + custoBandeira) + Contribuicao;
+        kWhDiv = contaDeLuz;
+        char kWhDivStr[10];
+        dtostrf(kWhDiv, 6, 3, kWhDivStr); // Converte o resultado para string
+        client.publish("outTopic/kWhDiv", kWhDivStr);
         }
     }
 }
@@ -268,23 +294,114 @@ void readEnergyDataFromEEPROM()
   // Check if the read value is a valid float. If not, initialize it to zero
   if (isnan(kWh))
   {
-    kWh = 0.0;
-    saveEnergyDataToEEPROM(); // Save initialized value to EEPROM
+  
   }
 }
 
-void readPersistentVariableFromEEPROM()
+void readSALVARFromEEPROM()
 {
   // Read the stored persistent variable from EEPROM
-  EEPROM.get(addrPersistentVar, persistentVariable);
+  EEPROM.get(addrSALVAR, SALVAR);
 
   // Check if the read value is a valid float. If not, initialize it to 1 to avoid division by 0
-  if (isnan(persistentVariable) || persistentVariable == 0.0)
+  if (isnan(SALVAR) || SALVAR == 0.0)
   {
-    persistentVariable = 1.0;
-    savePersistentVariableToEEPROM(); // Save initialized value to EEPROM
+    SALVAR = 1.0;
+    saveSALVARToEEPROM(); // Save initialized value to EEPROM
   }
 }
+
+void readTUSDFromEEPROM()
+{
+  // Read the stored persistent variable from EEPROM
+  EEPROM.get(addrTUSD, TUSD);
+
+  // Check if the read value is a valid float. If not, initialize it to 1 to avoid division by 0
+  if (isnan(TUSD) || TUSD == 0.0)
+  {
+    TUSD = 0.5;
+    saveTUSDToEEPROM(); // Save TUSD initialized value to EEPROM
+  }
+}
+
+void readTEFromEEPROM()
+{
+  // Read the stored persistent variable from EEPROM
+  EEPROM.get(addrTE, TE);
+
+  // Check if the read value is a valid float. If not, initialize it to 1 to avoid division by 0
+  if (isnan(TE) || TE == 0.0)
+  {
+    TE = 0.4;
+    saveTEToEEPROM(); // Save TE initialized value to EEPROM
+  }
+}
+
+void readCusto_BandeiraFromEEPROM()
+{
+  // Read the stored persistent variable from EEPROM
+  EEPROM.get(addrCusto_Bandeira, Custo_Bandeira);
+
+  // Check if the read value is a valid float. If not, initialize it to 1 to avoid division by 0
+  if (isnan(Custo_Bandeira) || Custo_Bandeira == 0.0)
+  {
+    Custo_Bandeira = 0.03;
+    saveCusto_BandeiraToEEPROM(); // Save Custo_Bandeira initialized value to EEPROM
+  }
+}
+
+void readICMSFromEEPROM()
+{
+  // Read the stored persistent variable from EEPROM
+  EEPROM.get(addrICMS, ICMS);
+
+  // Check if the read value is a valid float. If not, initialize it to 1 to avoid division by 0
+  if (isnan(ICMS) || ICMS == 0.0)
+  {
+    ICMS = 0.18;
+    saveICMSToEEPROM(); // Save ICMS initialized value to EEPROM
+  }
+}
+
+void readPISFromEEPROM()
+{
+  // Read the stored persistent variable from EEPROM
+  EEPROM.get(addrPIS, PIS);
+
+  // Check if the read value is a valid float. If not, initialize it to 1 to avoid division by 0
+  if (isnan(PIS) || PIS == 0.0)
+  {
+    ICMS = 0.0165;
+    savePISToEEPROM(); // Save PIS initialized value to EEPROM
+  }
+}
+
+void readCOFINSFromEEPROM()
+{
+  // Read the stored persistent variable from EEPROM
+  EEPROM.get(addrCOFINS, COFINS);
+
+  // Check if the read value is a valid float. If not, initialize it to 1 to avoid division by 0
+  if (isnan(COFINS) || COFINS == 0.0)
+  {
+    COFINS = 0.076;
+    saveCOFINSToEEPROM(); // Save COFINS initialized value to EEPROM
+  }
+}
+
+void readContribuicaoFromEEPROM()
+{
+  // Read the stored persistent variable from EEPROM
+  EEPROM.get(addrContribuicao, Contribuicao);
+
+  // Check if the read value is a valid float. If not, initialize it to 1 to avoid division by 0
+  if (isnan(Contribuicao) || Contribuicao == 0.0)
+  {
+    Contribuicao = 5.0;
+    saveContribuicaoToEEPROM(); // Save Contribuicao initialized value to EEPROM
+  }
+}
+
 
 void saveEnergyDataToEEPROM()
 {
@@ -294,10 +411,66 @@ void saveEnergyDataToEEPROM()
   EEPROM.commit();
 }
 
-void savePersistentVariableToEEPROM()
+void saveSALVARToEEPROM()
 {
   // Write the persistent variable value to EEPROM
-  EEPROM.put(addrPersistentVar, persistentVariable);
+  EEPROM.put(addrSALVAR, SALVAR);
+  // Commit changes to EEPROM
+  EEPROM.commit();
+}
+
+void saveTUSDToEEPROM()
+{
+  // Write the persistent variable value to EEPROM
+  EEPROM.put(addrTUSD, TUSD);
+  // Commit changes to EEPROM
+  EEPROM.commit();
+}
+
+void saveTEToEEPROM()
+{
+  // Write the persistent variable value to EEPROM
+  EEPROM.put(addrTE, TE);
+  // Commit changes to EEPROM
+  EEPROM.commit();
+}
+
+void saveCusto_BandeiraToEEPROM()
+{
+  // Write the persistent variable value to EEPROM
+  EEPROM.put(addrCusto_Bandeira, Custo_Bandeira);
+  // Commit changes to EEPROM
+  EEPROM.commit();
+}
+
+void saveICMSToEEPROM()
+{
+  // Write the persistent variable value to EEPROM
+  EEPROM.put(addrICMS, ICMS);
+  // Commit changes to EEPROM
+  EEPROM.commit();
+}
+
+void savePISToEEPROM()
+{
+  // Write the persistent variable value to EEPROM
+  EEPROM.put(addrPIS, PIS);
+  // Commit changes to EEPROM
+  EEPROM.commit();
+}
+
+void saveCOFINSToEEPROM()
+{
+  // Write the persistent variable value to EEPROM
+  EEPROM.put(addrCOFINS, COFINS);
+  // Commit changes to EEPROM
+  EEPROM.commit();
+}
+
+void saveContribuicaoToEEPROM()
+{
+  // Write the persistent variable value to EEPROM
+  EEPROM.put(addrContribuicao, Contribuicao);
   // Commit changes to EEPROM
   EEPROM.commit();
 }
@@ -331,8 +504,15 @@ void reconnect() {
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
       client.subscribe("inTopic");
-      client.subscribe("inTopic2");  // Subscribe to the topic for persistentVariable
-      client.subscribe("inTopic3");  // Subscribe to the topic for RESET command
+      client.subscribe("inTopic/reset");  // Subscribe to the topic for RESET command
+      client.subscribe("inTopic/salvar");  // Subscribe to the topic for SALVAR command
+      client.subscribe("inTopic/TUSD");  // Subscribe to the topic for TUSD command
+      client.subscribe("inTopic/TE");  // Subscribe to the topic for TE command
+      client.subscribe("inTopic/Custo_Bandeira");  // Subscribe to the topic for Custo_Bandeira command
+      client.subscribe("inTopic/ICMS");  // Subscribe to the topic for ICMS command
+      client.subscribe("inTopic/PIS");  // Subscribe to the topic for PIS command
+      client.subscribe("inTopic/COFINS");  // Subscribe to the topic for COFINS command
+      client.subscribe("inTopic/Contribuicao");  // Subscribe to the topic for Contribuicao command
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -372,30 +552,86 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       kWhPhantom += incomingValue;  // Atualiza kWhPhantom com o valor recebido
       Serial.print("Added to kWhPhantom: ");
       Serial.println(incomingValue);
-      // Não atualizar kWh aqui, ele deve ser calculado a partir da potência
       saveEnergyDataToEEPROM();  // Salva o novo valor de kWhPhantom no EEPROM
       updateLCD();  // Atualiza o LCD para refletir o novo valor
     }
   }
 
-  // Handle inTopic2 for persistentVariable
-  if (String(topic) == "inTopic2") {
-    persistentVariable = incomingValue;  // Atualiza a variável persistente
-    Serial.print("Updated persistentVariable: ");
-    Serial.println(persistentVariable);
-    savePersistentVariableToEEPROM();  // Salva a nova variável persistente no EEPROM
+  // Handle inTopic/TUSD
+  else if (String(topic) == "inTopic/TUSD") {
+    TUSD = incomingValue;  // Atualiza a variável TUSD
+    Serial.print("Updated TUSD: ");
+    Serial.println(TUSD);
+    saveTUSDToEEPROM();  // Salva a nova variável TUSD no EEPROM
     updateLCD();  // Atualiza o LCD para refletir o novo valor
   }
 
-  // Handle inTopic3 for RESET command
-  if (String(topic) == "inTopic3") {
+  // Handle inTopic/TE
+  else if (String(topic) == "inTopic/TE") {
+    TE = incomingValue;  // Atualiza a variável TE
+    Serial.print("Updated TE: ");
+    Serial.println(TE);
+    saveTEToEEPROM();  // Salva a nova variável TE no EEPROM
+    updateLCD();  // Atualiza o LCD para refletir o novo valor
+  }
+
+  // Handle inTopic/Custo_Bandeira
+  else if (String(topic) == "inTopic/Custo_Bandeira") {
+    Custo_Bandeira = incomingValue;  // Atualiza a variável Custo_Bandeira
+    Serial.print("Updated Custo_Bandeira: ");
+    Serial.println(Custo_Bandeira);
+    saveCusto_BandeiraToEEPROM();  // Salva a nova variável Custo_Bandeira no EEPROM
+    updateLCD();  // Atualiza o LCD para refletir o novo valor
+  }
+
+  // Handle inTopic/ICMS
+  else if (String(topic) == "inTopic/ICMS") {
+    ICMS = incomingValue;  // Atualiza a variável ICMS
+    Serial.print("Updated ICMS: ");
+    Serial.println(ICMS);
+    saveICMSToEEPROM();  // Salva a nova variável ICMS no EEPROM
+    updateLCD();  // Atualiza o LCD para refletir o novo valor
+  }
+
+  // Handle inTopic/PIS
+  else if (String(topic) == "inTopic/PIS") {
+    PIS = incomingValue;  // Atualiza a variável PIS
+    Serial.print("Updated PIS: ");
+    Serial.println(PIS);
+    savePISToEEPROM();  // Salva a nova variável PIS no EEPROM
+    updateLCD();  // Atualiza o LCD para refletir o novo valor
+  }
+
+  // Handle inTopic/COFINS
+  else if (String(topic) == "inTopic/COFINS") {
+    COFINS = incomingValue;  // Atualiza a variável COFINS
+    Serial.print("Updated COFINS: ");
+    Serial.println(COFINS);
+    saveCOFINSToEEPROM();  // Salva a nova variável COFINS no EEPROM
+    updateLCD();  // Atualiza o LCD para refletir o novo valor
+  }
+
+  // Handle inTopic/Contribuicao
+  else if (String(topic) == "inTopic/Contribuicao") {
+    Contribuicao = incomingValue;  // Atualiza a variável Contribuicao
+    Serial.print("Updated Contribuicao: ");
+    Serial.println(Contribuicao);
+    saveContribuicaoToEEPROM();  // Salva a nova variável Contribuicao no EEPROM
+    updateLCD();  // Atualiza o LCD para refletir o novo valor
+  }
+
+  // Handle inTopic/reset for RESET command
+  else if (String(topic) == "inTopic/reset") {
     if (message == "RESET") {
       kWh = 0.0;  // Reseta kWh para zero
       Serial.println("kWh reset to 0 via MQTT command");
       saveEnergyDataToEEPROM();  // Salva o valor resetado de kWh no EEPROM
       updateLCD();  // Atualiza o LCD para refletir o valor resetado
     }
-  if (String(topic) == "inTopic4") {
+  }
+
+  // Handle inTopic/salvar for SALVAR command
+  else if (String(topic) == "inTopic/salvar") {
     if (message == "SALVAR") {
       // Envia os valores para os tópicos permanentes
       char kWhPermanStr[10];
@@ -406,7 +642,5 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       dtostrf(kWhDiv, 6, 3, kWhDivPermanStr);
       client.publish("outTopic/kWhDivperman", kWhDivPermanStr);
     }
-    }
   }
-}
-
+} // Fecha a função mqttCallback
