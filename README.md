@@ -12,7 +12,6 @@ Com isso, fica mais fácil compreender e gerenciar os gastos de energia elétric
 
 ![image](https://github.com/user-attachments/assets/f1169cd7-8677-4852-b360-518d8454e5c1)
 
-![image](https://github.com/user-attachments/assets/f1aa80ab-0aa8-476d-9366-fcd7eb0e8692)
 
 # AUTOR 
 - João Vitor Rocha Leal
